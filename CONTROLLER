@@ -1,0 +1,115 @@
+import flet as ft
+
+from database.DAO import DAO
+
+
+class Controller:
+    def __init__(self, view, model):
+        # the view, with the graphical elements of the UI
+        self._view = view
+        # the model, which implements the logic of the program and holds the data
+        self._model = model
+
+        self._listYear = []
+        self._listCountry = []
+
+    def fillDD(self):
+        # Riempie il dropdown degli anni
+        self._view.ddyear.options.clear()
+        for i in range(2004, 2007):
+            self._view.ddyear.options.append(ft.dropdown.Option(text=str(i)))
+
+    def fillDD_director(self, e):
+        self._view.dddirector.options.clear()
+        anno = self._view.ddyear.value
+        directors = DAO.getAllDirectors(anno)
+
+        for director in directors:
+            # Assicurati che 'director' sia un'istanza di Directors e che abbia gli attributi giusti
+            self._view.dddirector.options.append(
+                ft.dropdown.Option(text=f"{director.id} - {director.first_name} {director.last_name}"))
+
+        self._view.update_page()
+
+    def handle_graph(self, e):
+        y = self._view.ddyear.value
+        d = self._view.ddyear.value
+
+        if y is None:
+            self._view.create_alert("Inserire l'anno")
+        if d is None:
+            self._view.create_alert("Inserire il regista")
+
+        self._model.create_graph(y)
+
+        nNodes, nEdges = self._model.getCaratteristiche()
+        self._view.txt_result.controls.append(ft.Text(f"Il grafo ha {nNodes} nodi e {nEdges} archi"))
+        self._view.update_page()
+
+    def handle_registi(self, e):
+        v = self._view.dddirector.value
+
+        if not v:
+            self._view.create_alert("Selezionare un regista")
+            return
+
+        # Ora `director_id` è solo l'ID e può essere utilizzato nel grafo
+        adjacent_directors = self._model.get_adjacent_directors(v)
+
+        if not adjacent_directors:
+            self._view.txt_result.controls.append(ft.Text('Regista vicino non trovato'))
+            self._view.update_page()
+            return  # Esci se non ci sono registi vicini
+
+        self._view.txt_result.controls.append(ft.Text(f"Registi adiacenti a {v}:"))
+        for director, weight in adjacent_directors:
+            self._view.txt_result.controls.append(ft.Text(f"Regista: {director}, Attori condivisi: {weight}"))
+
+        self._view.update_page()
+
+    def handle_path(self, e):
+        # Ottieni il regista selezionato e il numero massimo di attori condivisi
+        selected_director = self._view.dddirector.value
+        year = self._view.ddyear.value
+        self._grafo = self._model.create_graph(year)
+
+        try:
+            max_shared_actors = int(self._view.txtN.value)  # Numero massimo di attori condivisi
+        except ValueError:
+            self._view.create_alert("Inserire un numero valido per gli attori condivisi")
+            return
+
+        if not selected_director:
+            self._view.create_alert("Selezionare un regista")
+            return
+
+        # Chiamata al modello per ottenere il cammino migliore
+        path = self._model.getCammino(selected_director, max_shared_actors)
+
+        # Se non esiste un cammino valido, mostra un messaggio
+        if not path:
+            self._view.txtN.controls.clear()
+            self._view.txtN.controls.append(
+                ft.Text(f"Non ho trovato un cammino a partire da {selected_director}"))
+            self._view.update_page()
+            return
+
+        # Se il cammino è valido, mostra i registi coinvolti
+        self._view.txtN.controls.clear()
+        self._view.txtN.controls.append(ft.Text(f"Ho trovato un cammino a partire da {selected_director}:"))
+        total_shared_actors = 0  # Somma degli attori condivisi lungo il cammino
+
+        # Elenco dei registi nel cammino e somma degli attori condivisi
+        for i in range(1, len(path)):  # Non usare enumerate, ma indicizzazione normale
+            director = path[i]
+            self._view.txtN.controls.append(ft.Text(f"Regista: {director}"))
+
+            # Calcola e aggiungi il peso (attori condivisi) se non è il primo regista
+            shared_actors = self._grafo[path[i - 1]][director]['weight']
+            total_shared_actors += shared_actors
+
+        # Aggiungi il totale degli attori condivisi
+        self._view.txtN.controls.append(ft.Text(f"Totale attori condivisi: {total_shared_actors}"))
+
+        # Rendi visibili i risultati nella pagina
+        self._view.update_page()
