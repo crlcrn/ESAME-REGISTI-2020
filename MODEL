@@ -1,0 +1,89 @@
+import copy
+
+import networkx as nx
+
+from database.DAO import DAO
+
+
+class Model:
+    def __init__(self):
+        self._grafo = nx.Graph()
+
+
+    def create_graph(self, year):
+        self._grafo.clear()  # Pulisce il grafo esistente
+
+        directors = DAO.getAllNodi(year)
+
+        # Aggiunge nodi per i registi
+        for director in directors:
+            self._grafo.add_node(director[0])
+
+        edges = DAO.getEdges(year)
+        for regista1, regista2, peso in edges:
+            self._grafo.add_edge(regista1, regista2, weight = peso)
+
+    def get_adjacent_directors(self, v):
+
+        if v not in self._grafo:
+            return []
+
+        listTuples = []
+
+        neighbors = list(self._grafo.neighbors(v))
+
+        # Aggiungi i vicini e il peso dell'arco alla lista
+        for neighbor in neighbors:
+            peso = self._grafo[v][neighbor]['weight']
+            listTuples.append((neighbor, peso))
+
+        # Ordina i vicini in base al peso in ordine decrescente
+        listTuples.sort(key=lambda x: x[1], reverse=True)
+
+        return listTuples
+
+    def getCammino(self, director_id, max_shared_actors):
+        path = [director_id]  # Partiamo dal regista selezionato
+        best_path = []
+
+        # Eseguiamo una ricerca ricorsiva o iterativa per trovare il cammino ottimale
+        self._ricorsione(path, max_shared_actors, best_path)
+
+        return best_path, director_id
+
+
+    def _ricorsione(self, path, max_shared_actors, best_path):
+        # Calcola il peso totale del cammino
+        total_weight = self.get_weight_of_path(path)
+
+        # Se il peso totale è maggiore del limite, ritorna (non è valido)
+        if total_weight > max_shared_actors:
+            return
+
+        # Se il cammino è valido, memorizziamo il miglior cammino
+        if len(path) > len(best_path):
+            best_path.clear()
+            best_path.extend(path)
+
+        # Ottieni il regista corrente
+        current_director = path[-1]
+
+        # Esplora i vicini del regista corrente
+        for neighbor in self._grafo.neighbors(current_director):
+            if neighbor not in path:  # Evita di tornare indietro
+                path.append(neighbor)
+                self._ricorsione(path, max_shared_actors, best_path)
+                path.pop()  # Rimuovi il regista e prova un altro vicino
+
+
+    def get_weight_of_path(self, path):
+        # Calcola il peso di un cammino dato dalla lista dei registi
+        total_weight = 0
+        for i in range(1, len(path)):  # Partiamo dal secondo regista, confrontiamo ogni coppia
+            shared_actors = self._grafo[path[i - 1]][path[i]]['weight']  # Peso tra due registi adiacenti
+            total_weight += shared_actors
+        return total_weight
+
+
+    def getCaratteristiche(self):
+        return len(self._grafo.nodes), len(self._grafo.edges)
